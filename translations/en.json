@@ -1,0 +1,46 @@
+{
+  "title": "UniFi Drive",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to UniFi Drive",
+        "description": "Enter your UniFi OS host and credentials",
+        "data": {
+          "host": "Host (e.g. 192.168.1.211)",
+          "username": "Username",
+          "password": "Password",
+          "verify_ssl": "Verify SSL certificate",
+          "scan_interval": "Scan interval (seconds)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate UniFi Drive",
+        "description": "Please enter your password again.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "verify_ssl": "Verify SSL certificate",
+          "scan_interval": "Scan interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "auth": "Login failed. Check host, credentials, SSL or 2FA (use a local account)."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "UniFi Drive Options",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "verify_ssl": "Verify SSL certificate",
+          "scan_interval": "Scan interval (seconds)"
+        }
+      }
+    }
+  }
+}

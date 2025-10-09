@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to UniFi Drive / UNAS",
+        "description": "Enter your local console details.",
+        "data": {
+          "host": "Host (e.g. 192.168.1.211)",
+          "username": "Local username",
+          "password": "Password",
+          "verify_ssl": "Verify SSL certificate",
+          "scan_interval": "Update interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Login failed. Check host, creds, SSL, or 2FA (use local account)."
+    },
+    "abort": {}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "UniFi Drive Options",
+        "data": {
+          "scan_interval": "Update interval (seconds)"
+        }
+      }
+    }
+  }
+}
