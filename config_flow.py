@@ -64,7 +64,38 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(title="UniFi Drive", data=data)
 
     async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
-        self._reauth_entry = next((e for e in self._async_current_entries()), None)
+        """Handle a re-authentication request for an existing entry.
+
+        Home Assistant provides the entry id in the flow context when a
+        reauthentication is triggered.  The previous implementation ignored that
+        information and simply grabbed the first configured entry which meant the
+        wrong config entry could be updated in multi-device installations.  This
+        method now looks up the specific entry that requested reauth (falling
+        back to matching by host/username when the context is unavailable).
+        """
+
+        entry: config_entries.ConfigEntry | None = None
+
+        if entry_id := self.context.get("entry_id"):
+            entry = self.hass.config_entries.async_get_entry(entry_id)
+
+        if entry is None:
+            host = entry_data.get(CONF_HOST)
+            username = entry_data.get(CONF_USERNAME)
+            entry = next(
+                (
+                    e
+                    for e in self._async_current_entries()
+                    if e.data.get(CONF_HOST) == host
+                    and e.data.get(CONF_USERNAME) == username
+                ),
+                None,
+            )
+
+        self._reauth_entry = entry
+        if self._reauth_entry is None:
+            return self.async_abort(reason="unknown")
+
         return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> FlowResult:
