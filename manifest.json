@@ -2,17 +2,12 @@
   "domain": "unifi_drive",
   "name": "UniFi Drive",
   "version": "0.2.0",
-  "documentation": "https://example.invalid/unifi_drive",
-  "requirements": [
-    "aiohttp>=3.9.0"
-  ],
-  "codeowners": [
-    "@you"
-  ],
+  "documentation": "https://github.com/holdestmade/unifi-drive",
+  "issue_tracker": "https://github.com/holdestmade/unifi-drive/issues",
+  "codeowners": ["@holdestmade"],
+  "requirements": [ "aiohttp>=3.9.0" ],
   "iot_class": "local_polling",
   "integration_type": "hub",
-  "loggers": [
-    "custom_components.unifi_drive"
-  ],
+  "loggers": [ "custom_components.unifi_drive"],
   "config_flow": true
 }
