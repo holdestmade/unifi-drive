@@ -4,7 +4,7 @@
     "step": {
       "user": {
         "title": "Connect to UniFi Drive",
-        "description": "Enter your UniFi OS host and credentials",
+        "description": "Enter your UniFi OS host and credentials.",
         "data": {
           "host": "Host (e.g. 192.168.1.211)",
           "username": "Username",
@@ -15,7 +15,7 @@
       },
       "reauth_confirm": {
         "title": "Reauthenticate UniFi Drive",
-        "description": "Please enter your password again.",
+        "description": "Your session expired or credentials changed. Please enter your password again.",
         "data": {
           "host": "Host",
           "username": "Username",
@@ -26,13 +26,18 @@
       }
     },
     "error": {
-      "auth": "Login failed. Check host, credentials, SSL or 2FA (use a local account)."
+      "auth": "Login failed. Check host, credentials, SSL, or 2FA (use a local account)."
+    },
+    "abort": {
+      "reauth_successful": "Reauthentication successful.",
+      "unknown": "Unexpected error."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "UniFi Drive Options",
+        "description": "Update connection settings.",
         "data": {
           "host": "Host",
           "username": "Username",
