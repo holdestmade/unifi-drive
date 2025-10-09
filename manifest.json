@@ -1,8 +1,8 @@
 {
   "domain": "unifi_drive",
   "name": "UniFi Drive",
-  "version": "0.2.0",
-  "documentation": "https://github.com/holdestmade/unifi-drive",
+  "version": "0.2.1",
+  "documentation": "https://github.com/holdestmade/unifi-drive#readme",
   "issue_tracker": "https://github.com/holdestmade/unifi-drive/issues",
   "codeowners": ["@holdestmade"],
   "requirements": [ "aiohttp>=3.9.0" ],
