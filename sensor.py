@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorEntity,
+    SensorDeviceClass,
+    SensorStateClass,
+)
 from homeassistant.const import (
     UnitOfTemperature,
     UnitOfDataRate,
     UnitOfInformation,
+    UnitOfTime,
     PERCENTAGE,
 )
 from homeassistant.core import HomeAssistant
@@ -34,39 +39,43 @@ def _maybe_int(val: Any) -> Optional[int]:
         return None
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator: UnifiDriveCoordinator = data["coordinator"]
 
     entities: list[SensorEntity] = []
 
-    # System sensors
-    entities.extend([
-        SimpleTextSensor(coordinator, entry, ("device", "firmwareVersion"), "Firmware Version", "mdi:nas"),
-        SimpleTextSensor(coordinator, entry, ("device", "version"), "Drive App Version", "mdi:information-outline"),
-        SimpleTextSensor(coordinator, entry, ("device", "status"), "System Status", "mdi:checkbox-marked-circle-outline"),
-        CpuLoadSensor(coordinator, entry),
-        CpuTempSensor(coordinator, entry),
-        MemBytesSensor(coordinator, entry, ("device", "memory", "total"), "Memory Total"),
-        MemBytesSensor(coordinator, entry, ("device", "memory", "available"), "Memory Available"),
-        MemBytesSensor(coordinator, entry, ("device", "memory", "free"), "Memory Free"),
-        MemUsagePercentSensor(coordinator, entry),
-        ActiveNicSpeedSensor(coordinator, entry),
-        FanProfileSensor(coordinator, entry),
-    ])
+    entities.extend(
+        [
+            SimpleTextSensor(coordinator, entry, ("device", "firmwareVersion"), "Firmware Version", "mdi:nas"),
+            SimpleTextSensor(coordinator, entry, ("device", "version"), "Drive App Version", "mdi:information-outline"),
+            SimpleTextSensor(coordinator, entry, ("device", "status"), "System Status", "mdi:checkbox-marked-circle-outline"),
+            CpuLoadSensor(coordinator, entry),
+            CpuTempSensor(coordinator, entry),
+            MemBytesSensor(coordinator, entry, ("device", "memory", "total"), "Memory Total"),
+            MemBytesSensor(coordinator, entry, ("device", "memory", "available"), "Memory Available"),
+            MemBytesSensor(coordinator, entry, ("device", "memory", "free"), "Memory Free"),
+            MemUsagePercentSensor(coordinator, entry),
+            MemUsedBytesSensor(coordinator, entry),
+            ActiveNicSpeedSensor(coordinator, entry),
+            FanProfileSensor(coordinator, entry),
+        ]
+    )
 
-    # Storage
-    entities.extend([
-        StorageTotalBytesSensor(coordinator, entry),
-        StorageUsedBytesSensor(coordinator, entry),
-        StorageFreeBytesSensor(coordinator, entry),
-        StorageUsedPercentSensor(coordinator, entry),
-        SharesCountSensor(coordinator, entry),
-        DisksCountSensor(coordinator, entry),
-        HottestDiskTempSensor(coordinator, entry),
-    ])
+    entities.extend(
+        [
+            StorageTotalBytesSensor(coordinator, entry),
+            StorageUsedBytesSensor(coordinator, entry),
+            StorageFreeBytesSensor(coordinator, entry),
+            StorageUsedPercentSensor(coordinator, entry),
+            SharesCountSensor(coordinator, entry),
+            DisksCountSensor(coordinator, entry),
+            HottestDiskTempSensor(coordinator, entry),
+        ]
+    )
 
-    # Drives
     drives = (coordinator.data or {}).get("drives") or {}
     drive_items = drives.get("drives") if isinstance(drives, dict) else []
     for d in drive_items or []:
@@ -74,11 +83,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         name = d.get("name") or did or "Drive"
         if not did:
             continue
-        entities.extend([
-            DriveUsageBytesSensor(coordinator, entry, did, name),
-            DriveStatusEnumSensor(coordinator, entry, did, name),
-            DriveMemberCountSensor(coordinator, entry, did, name),
-        ])
+        entities.extend(
+            [
+                DriveUsageBytesSensor(coordinator, entry, did, name),
+                DriveStatusEnumSensor(coordinator, entry, did, name),
+                DriveMemberCountSensor(coordinator, entry, did, name),
+            ]
+        )
+
+    for disk in _disks_list_from_storage(coordinator):
+        entities.extend(
+            [
+                DiskTemperatureSensor(coordinator, entry, disk),
+                DiskCapacityBytesSensor(coordinator, entry, disk),
+                DiskRpmSensor(coordinator, entry, disk),
+                DiskStateEnumSensor(coordinator, entry, disk),
+                DiskPowerOnHoursSensor(coordinator, entry, disk),
+                DiskSmartBadSectorsSensor(coordinator, entry, disk),
+                DiskSmartUncorrectableSensor(coordinator, entry, disk),
+                DiskReadErrorRateSensor(coordinator, entry, disk),
+            ]
+        )
 
     async_add_entities(entities)
 
@@ -86,7 +111,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class BaseUDSensor(CoordinatorEntity[UnifiDriveCoordinator], SensorEntity):
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator: UnifiDriveCoordinator, entry: ConfigEntry, name_suffix: str, icon: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        coordinator: UnifiDriveCoordinator,
+        entry: ConfigEntry,
+        name_suffix: str,
+        icon: Optional[str] = None,
+    ) -> None:
         super().__init__(coordinator)
         self._entry = entry
         self._name_suffix = name_suffix
@@ -199,10 +230,36 @@ class MemUsagePercentSensor(BaseUDSensor):
     def native_value(self):
         mem = ((self.coordinator.data or {}).get("device") or {}).get("memory") or {}
         total = _maybe_int(mem.get("total"))
-        free = _maybe_int(mem.get("free"))
-        if not total or total <= 0 or free is None:
+        avail = _maybe_int(mem.get("available"))
+        if avail is None:
+            avail = _maybe_int(mem.get("free"))
+        if not total or total <= 0 or avail is None:
             return None
-        return round(((total - free) / total) * 100.0, 1)
+        pct = ((total - avail) / total) * 100.0
+        return round(max(0.0, min(100.0, pct)), 1)
+
+
+class MemUsedBytesSensor(BaseUDSensor):
+    _attr_name = "Memory Used"
+    _attr_icon = "mdi:memory"
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_native_unit_of_measurement = UnitOfInformation.BYTES
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry):
+        super().__init__(coordinator, entry, "memory_used_bytes", "mdi:memory")
+
+    @property
+    def native_value(self):
+        mem = ((self.coordinator.data or {}).get("device") or {}).get("memory") or {}
+        total_kib = _maybe_int(mem.get("total"))
+        avail_kib = _maybe_int(mem.get("available"))
+        if avail_kib is None:
+            avail_kib = _maybe_int(mem.get("free"))
+        if not total_kib or total_kib <= 0 or avail_kib is None:
+            return None
+        used_kib = max(0, total_kib - avail_kib)
+        return _kib_to_bytes(used_kib)
 
 
 class ActiveNicSpeedSensor(BaseUDSensor):
@@ -270,11 +327,6 @@ class FanProfileSensor(BaseUDSensor):
 class _StorageTotalsMixin:
     @staticmethod
     def _totals_bytes(root: dict[str, Any]) -> tuple[int, int, int]:
-        """
-        Return (total_bytes, used_bytes, free_bytes).
-        Prefer the /storage payload (pools[capacity/usage]), with a robust fallback.
-        """
-        # Primary: /proxy/drive/api/v2/storage
         storage = (root or {}).get("storage") or {}
         pools = storage.get("pools")
         if isinstance(pools, list) and pools:
@@ -286,7 +338,6 @@ class _StorageTotalsMixin:
             except Exception:
                 pass
 
-        # Fallback 1: volumes array (if your device exposes it)
         vols = (root or {}).get("volumes")
         if vols:
             items = vols if isinstance(vols, list) else vols.get("items") if isinstance(vols, dict) else []
@@ -296,17 +347,17 @@ class _StorageTotalsMixin:
                 u = v.get("usedBytes") or v.get("used") or 0
                 f = v.get("availableBytes") or v.get("free") or (t - u if t and u else 0)
                 try:
-                    total += float(t); used += float(u); free += float(f)
+                    total += float(t)
+                    used += float(u)
+                    free += float(f)
                 except Exception:
                     continue
             if total or used or free:
                 return int(total), int(used), int(free)
 
-        # Fallback 2: websocket-style snapshot under device.storage (if ever present)
         dev = (root or {}).get("device") or {}
         storage_list = dev.get("storage")
         if isinstance(storage_list, list):
-            # Look for the main RAID mount (/srv) block if available
             raid = next((s for s in storage_list if s.get("type") == "raid"), None)
             if raid and all(k in raid for k in ("size", "used", "avail")):
                 try:
@@ -317,7 +368,6 @@ class _StorageTotalsMixin:
                 except Exception:
                     pass
 
-        # Nothing usable
         return 0, 0, 0
 
 
@@ -434,7 +484,6 @@ class HottestDiskTempSensor(BaseUDSensor):
         return max(temps) if temps else None
 
 
-# Drives (per-drive)
 def _drives_list(coordinator: UnifiDriveCoordinator) -> list[dict[str, Any]]:
     drives = (coordinator.data or {}).get("drives") or {}
     return drives.get("drives") if isinstance(drives, dict) else []
@@ -506,3 +555,159 @@ class DriveMemberCountSensor(_BaseDriveEntity):
     def native_value(self):
         d = self._find_drive()
         return (d or {}).get("memberCount")
+
+def _disks_list_from_storage(coordinator) -> list[dict]:
+    storage = (coordinator.data or {}).get("storage") or {}
+    disks = storage.get("disks") or []
+    return [d for d in disks if (d.get("state") or "").lower() != "empty"]
+
+
+class _BaseDiskEntity(BaseUDSensor):
+    def __init__(self, coordinator, entry, disk: dict, suffix: str, icon: str | None = None):
+        serial = disk.get("serial") or f"slot{disk.get('slotId','?')}"
+        super().__init__(coordinator, entry, f"disk_{serial}_{suffix}", icon)
+        self._serial = serial
+        self._slot = str(disk.get("slotId") or "?")
+        self._model = disk.get("model") or "Disk"
+        self._disk_id_key = serial
+
+    @property
+    def name(self) -> str | None:
+        base = f"Disk {self._slot} ({self._model})"
+        return f"{base} {self._attr_name}" if self._attr_name else base
+
+    def _find_disk(self) -> dict | None:
+        for d in _disks_list_from_storage(self.coordinator):
+            sid = d.get("serial") or f"slot{d.get('slotId')}"
+            if sid == self._disk_id_key:
+                return d
+        return None
+
+
+class DiskTemperatureSensor(_BaseDiskEntity):
+    _attr_name = "Temperature"
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, disk):
+        super().__init__(coordinator, entry, disk, "temp", "mdi:thermometer")
+
+    @property
+    def native_value(self):
+        d = self._find_disk()
+        t = (d or {}).get("temperature")
+        return round(float(t), 1) if isinstance(t, (int, float)) else None
+
+
+class DiskCapacityBytesSensor(_BaseDiskEntity):
+    _attr_name = "Capacity"
+    _attr_device_class = SensorDeviceClass.DATA_SIZE
+    _attr_native_unit_of_measurement = UnitOfInformation.BYTES
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, disk):
+        super().__init__(coordinator, entry, disk, "capacity_bytes", "mdi:harddisk")
+
+    @property
+    def native_value(self):
+        d = self._find_disk()
+        sz = (d or {}).get("size")
+        try:
+            return int(sz) if sz is not None else None
+        except Exception:
+            return None
+
+
+class DiskRpmSensor(_BaseDiskEntity):
+    _attr_name = "RPM"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, disk):
+        super().__init__(coordinator, entry, disk, "rpm", "mdi:rotate-right")
+
+    @property
+    def native_value(self):
+        d = self._find_disk()
+        rpm = (d or {}).get("rpm")
+        return int(rpm) if isinstance(rpm, (int, float)) else None
+
+
+class DiskStateEnumSensor(_BaseDiskEntity):
+    _attr_name = "State"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_icon = "mdi:checkbox-marked-circle-outline"
+
+    def __init__(self, coordinator, entry, disk):
+        super().__init__(coordinator, entry, disk, "state", "mdi:checkbox-marked-circle-outline")
+        self._attr_options = None
+
+    @property
+    def native_value(self):
+        d = self._find_disk()
+        state = ((d or {}).get("state") or "").lower() or None
+        opts = set(self._attr_options or [])
+        for x in _disks_list_from_storage(self.coordinator):
+            s = (x.get("state") or "").lower()
+            if s:
+                opts.add(s)
+        self._attr_options = sorted(opts) if opts else None
+        return state
+
+
+class DiskPowerOnHoursSensor(_BaseDiskEntity):
+    _attr_name = "Power On"
+    _attr_device_class = SensorDeviceClass.DURATION
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, disk):
+        super().__init__(coordinator, entry, disk, "power_on_hours", "mdi:clock-outline")
+
+    @property
+    def native_value(self):
+        d = self._find_disk()
+        poh = (d or {}).get("powerOnHours")
+        return int(poh) if isinstance(poh, (int, float)) else None
+
+
+class DiskSmartBadSectorsSensor(_BaseDiskEntity):
+    _attr_name = "SMART Bad Sectors"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, disk):
+        super().__init__(coordinator, entry, disk, "smart_bad_sectors", "mdi:alert-decagram")
+
+    @property
+    def native_value(self):
+        d = self._find_disk()
+        v = (d or {}).get("badSectorCount")
+        return int(v) if isinstance(v, (int, float)) else None
+
+
+class DiskSmartUncorrectableSensor(_BaseDiskEntity):
+    _attr_name = "SMART Uncorrectable"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, disk):
+        super().__init__(coordinator, entry, disk, "smart_uncorrectable", "mdi:alert")
+
+    @property
+    def native_value(self):
+        d = self._find_disk()
+        v = (d or {}).get("uncorrectableSectorCount")
+        return int(v) if isinstance(v, (int, float)) else None
+
+
+class DiskReadErrorRateSensor(_BaseDiskEntity):
+    _attr_name = "Read Error Rate"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry, disk):
+        super().__init__(coordinator, entry, disk, "read_error_rate", "mdi:chart-line")
+
+    @property
+    def native_value(self):
+        d = self._find_disk()
+        v = (d or {}).get("readErrorRate") or (d or {}).get("smartReadErrorCount")
+        return int(v) if isinstance(v, (int, float)) else None
