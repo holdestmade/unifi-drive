@@ -32,7 +32,6 @@ These options can be adjusted later from the integration's options dialog.
 - Install dependencies listed in `manifest.json` (notably `aiohttp`).
 - Use Home Assistant's development container or virtual environment for testing flows.
 - Run static type checking or linting tools as needed.  There are currently no automated tests in the repository.
-- Implement Websocket instead of Polling
 
 ## License
 
