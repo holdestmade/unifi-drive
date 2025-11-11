@@ -1,7 +1,7 @@
 {
   "domain": "unifi_drive",
   "name": "UniFi Drive",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "documentation": "https://github.com/holdestmade/unifi-drive#readme",
   "issue_tracker": "https://github.com/holdestmade/unifi-drive/issues",
   "codeowners": ["@holdestmade"],
