@@ -41,6 +41,8 @@ class UniFiDriveClient:
     async def close(self) -> None:
         if self._session and not self._session.closed:
             await self._session.close()
+        self._session = None
+        self._csrf = None
 
     async def login(self) -> None:
         """Perform login to obtain TOKEN cookie and X-Csrf-Token header."""
@@ -110,14 +112,46 @@ class UniFiDriveClient:
     async def get_fan_control(self) -> dict[str, Any]:
         return await self._get_or_empty("/proxy/drive/api/v2/systems/fan-control", {})
 
+    async def get_storage_pools(self) -> Any:
+        return await self._get_or_empty("/proxy/drive/api/v2/storage/pools", [])
+
+    async def get_storage_tasks(self) -> Any:
+        return await self._get_or_empty("/proxy/drive/api/v2/storage/tasks", [])
+
+    async def get_alerts(self) -> Any:
+        return await self._get_or_empty("/proxy/drive/api/v2/alerts", [])
+
+    async def get_settings(self) -> dict[str, Any]:
+        return await self._get_or_empty("/proxy/drive/api/v2/settings", {})
+
+    async def get_system_led(self) -> dict[str, Any]:
+        return await self._get_or_empty("/proxy/drive/api/v2/systems/led", {})
+
     async def get_all(self) -> dict[str, Any]:
-        dev, storage_root, shares, vols, drives, fan = await asyncio.gather(
+        (
+            dev,
+            storage_root,
+            shares,
+            vols,
+            drives,
+            fan,
+            pools,
+            tasks,
+            alerts,
+            settings,
+            led,
+        ) = await asyncio.gather(
             self.get_device_info(),
             self.get_storage_root(),
             self.get_storage_shares(),
             self.get_storage_volumes(),
             self.get_drives(),
             self.get_fan_control(),
+            self.get_storage_pools(),
+            self.get_storage_tasks(),
+            self.get_alerts(),
+            self.get_settings(),
+            self.get_system_led(),
         )
         return {
             "device": dev,
@@ -126,4 +160,9 @@ class UniFiDriveClient:
             "volumes": vols,
             "drives": drives,
             "fan_control": fan,
+            "storage_pools": pools,
+            "storage_tasks": tasks,
+            "alerts": alerts,
+            "settings": settings,
+            "system_led": led,
         }

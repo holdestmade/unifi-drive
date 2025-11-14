@@ -34,6 +34,18 @@ These options can be adjusted later from the integration's options dialog.
 - Run static type checking or linting tools as needed.  There are currently no automated tests in the repository.
 - Implement Websocket instead of Polling
 
+## Additional UniFi Drive API endpoints to explore
+
+The REST surface exposed under `/proxy/drive/api/v2/` is broader than the handful of resources currently consumed by this integration.  When expanding sensor or binary sensor coverage it is worth inspecting the responses from these commonly observed endpoints:
+
+- `GET /proxy/drive/api/v2/storage/pools` – detailed RAID/pool health and redundancy metadata.
+- `GET /proxy/drive/api/v2/storage/tasks` – asynchronous storage tasks such as scrubs, rebuilds, and formatting jobs.
+- `GET /proxy/drive/api/v2/alerts` – active alerts and warning notifications raised by UniFi Drive.
+- `GET /proxy/drive/api/v2/settings` – global appliance settings, including update channels and power profiles.
+- `GET /proxy/drive/api/v2/systems/led` – enclosure LED status and current behaviour.
+
+Capturing these endpoints while logged into the UniFi OS web UI (for example via the browser's developer tools) will reveal the exact payload shape returned by your firmware version.
+
 ## License
 
 This project is provided as-is without an explicit license.  Please open an issue or submit a PR if you would like to contribute improvements.
