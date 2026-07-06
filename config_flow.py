@@ -1,156 +1,240 @@
+"""Config flow for UniFi Drive."""
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
-from homeassistant import config_entries
-from homeassistant.data_entry_flow import FlowResult
 
-from .const import (
-    DOMAIN,
-    CONF_HOST,
-    CONF_USERNAME,
-    CONF_PASSWORD,
-    CONF_VERIFY_SSL,
-    CONF_SCAN_INTERVAL,
-    DEFAULT_SCAN_INTERVAL,
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
 )
-from .api import UniFiDriveClient
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.selector import (
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
+from .api import (
+    DEFAULT_TIMEOUT,
+    UniFiDriveAuthError,
+    UniFiDriveClient,
+    UniFiDriveRateLimitError,
+)
+from .const import (
+    CONF_HOST,
+    CONF_PASSWORD,
+    CONF_SCAN_INTERVAL,
+    CONF_USERNAME,
+    CONF_VERIFY_SSL,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    MIN_SCAN_INTERVAL,
+)
 
-def _schema(defaults: dict[str, Any], include_password: bool = True) -> vol.Schema:
-    """Build the config/options schema with sensible defaults."""
-    data = {
-        vol.Required(CONF_HOST, default=defaults.get(CONF_HOST, "")): str,
-        vol.Required(CONF_USERNAME, default=defaults.get(CONF_USERNAME, "")): str,
-        vol.Optional(CONF_VERIFY_SSL, default=defaults.get(CONF_VERIFY_SSL, False)): bool,
-        vol.Optional(CONF_SCAN_INTERVAL, default=defaults.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): int,
+PASSWORD_SELECTOR = TextSelector(TextSelectorConfig(type=TextSelectorType.PASSWORD))
+SCAN_INTERVAL_VALIDATOR = vol.All(vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL))
+
+STEP_USER_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_HOST): str,
+        vol.Required(CONF_USERNAME): str,
+        vol.Required(CONF_PASSWORD): PASSWORD_SELECTOR,
+        vol.Optional(CONF_VERIFY_SSL, default=False): bool,
+        vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): SCAN_INTERVAL_VALIDATOR,
     }
-    if include_password:
-        data[vol.Required(CONF_PASSWORD, default=defaults.get(CONF_PASSWORD, ""))] = str
-    else:
-        data[vol.Optional(CONF_PASSWORD, default="")] = str
-    return vol.Schema(data)
+)
+
+STEP_REAUTH_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): PASSWORD_SELECTOR})
 
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+async def _async_validate_login(
+    hass: HomeAssistant, host: str, username: str, password: str, verify_ssl: bool
+) -> str | None:
+    """Try to log in; return an error key or None on success."""
+    session = async_create_clientsession(
+        hass,
+        verify_ssl=verify_ssl,
+        cookie_jar=aiohttp.CookieJar(unsafe=True),
+        timeout=DEFAULT_TIMEOUT,
+    )
+    client = UniFiDriveClient(host, username, password, session)
+    try:
+        await client.login()
+    except UniFiDriveAuthError:
+        return "auth"
+    except UniFiDriveRateLimitError:
+        return "rate_limit"
+    except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError):
+        return "cannot_connect"
+    except Exception:  # safety net; surfaced as a generic error in the form
+        return "unknown"
+    finally:
+        await client.close()
+    return None
+
+
+class UniFiDriveConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the UniFi Drive config flow."""
-    VERSION = 1
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    VERSION = 2
+
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Initial step: collect host/creds and validate."""
-        if user_input is None:
-            return self.async_show_form(step_id="user", data_schema=_schema({}))
-
-        client = UniFiDriveClient(
-            user_input[CONF_HOST],
-            user_input[CONF_USERNAME],
-            user_input[CONF_PASSWORD],
-            verify_ssl=user_input.get(CONF_VERIFY_SSL, False),
-        )
-        try:
-            await client.login()
-        except Exception:
-            return self.async_show_form(
-                step_id="user",
-                data_schema=_schema(user_input),
-                errors={"base": "auth"},
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            # Unique ID ensures a single config per (host, username)
+            await self.async_set_unique_id(
+                f"{user_input[CONF_HOST]}_{user_input[CONF_USERNAME]}"
             )
-        finally:
-            await client.close()
+            self._abort_if_unique_id_configured()
 
-        data = {
-            CONF_HOST: user_input[CONF_HOST],
-            CONF_USERNAME: user_input[CONF_USERNAME],
-            CONF_PASSWORD: user_input[CONF_PASSWORD],
-            CONF_VERIFY_SSL: user_input.get(CONF_VERIFY_SSL, False),
-            CONF_SCAN_INTERVAL: user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-        }
+            error = await _async_validate_login(
+                self.hass,
+                user_input[CONF_HOST],
+                user_input[CONF_USERNAME],
+                user_input[CONF_PASSWORD],
+                user_input.get(CONF_VERIFY_SSL, False),
+            )
+            if error is None:
+                return self.async_create_entry(
+                    title="UniFi Drive",
+                    data={
+                        CONF_HOST: user_input[CONF_HOST],
+                        CONF_USERNAME: user_input[CONF_USERNAME],
+                        CONF_PASSWORD: user_input[CONF_PASSWORD],
+                        CONF_VERIFY_SSL: user_input.get(CONF_VERIFY_SSL, False),
+                    },
+                    options={
+                        CONF_SCAN_INTERVAL: user_input.get(
+                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                        )
+                    },
+                )
+            errors["base"] = error
 
-        # Unique ID ensures a single config per (host, username)
-        await self.async_set_unique_id(f"{user_input[CONF_HOST]}_{user_input[CONF_USERNAME]}")
-        self._abort_if_unique_id_configured()
-
-        return self.async_create_entry(title="UniFi Drive", data=data)
-
-    async def async_step_reauth(self, entry_data: dict[str, Any]) -> FlowResult:
-        """Start reauth flow (triggered by 401 during updates)."""
-        self._reauth_entry = next(
-            (e for e in self._async_current_entries() if e.data.get(CONF_HOST) == entry_data.get(CONF_HOST)),
-            None,
+        suggested = {k: v for k, v in (user_input or {}).items() if k != CONF_PASSWORD}
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(STEP_USER_SCHEMA, suggested),
+            errors=errors,
         )
+
+    async def async_step_reauth(self, entry_data: dict[str, Any]) -> ConfigFlowResult:
+        """Start reauth flow (triggered by 401 during updates)."""
         return await self.async_step_reauth_confirm()
 
-    async def async_step_reauth_confirm(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Prompt for password and validate, then update the entry."""
-        entry = getattr(self, "_reauth_entry", None)
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Prompt for the password and validate, then update the entry."""
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
         if entry is None:
             return self.async_abort(reason="unknown")
 
-        if user_input is None:
-            defaults = {
-                CONF_HOST: entry.data.get(CONF_HOST, ""),
-                CONF_USERNAME: entry.data.get(CONF_USERNAME, ""),
-                CONF_VERIFY_SSL: entry.data.get(CONF_VERIFY_SSL, False),
-                CONF_SCAN_INTERVAL: entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                CONF_PASSWORD: "",
-            }
-            return self.async_show_form(
-                step_id="reauth_confirm",
-                data_schema=_schema(defaults, include_password=True),
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            error = await _async_validate_login(
+                self.hass,
+                entry.data[CONF_HOST],
+                entry.data[CONF_USERNAME],
+                user_input[CONF_PASSWORD],
+                entry.data.get(CONF_VERIFY_SSL, False),
             )
+            if error is None:
+                self.hass.config_entries.async_update_entry(
+                    entry, data={**entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]}
+                )
+                await self.hass.config_entries.async_reload(entry.entry_id)
+                return self.async_abort(reason="reauth_successful")
+            errors["base"] = error
 
-        # Validate new password
-        client = UniFiDriveClient(
-            entry.data[CONF_HOST],
-            entry.data[CONF_USERNAME],
-            user_input[CONF_PASSWORD],
-            verify_ssl=entry.data.get(CONF_VERIFY_SSL, False),
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=STEP_REAUTH_SCHEMA,
+            description_placeholders={
+                "host": entry.data.get(CONF_HOST, ""),
+                "username": entry.data.get(CONF_USERNAME, ""),
+            },
+            errors=errors,
         )
-        try:
-            await client.login()
-        except Exception:
-            return self.async_show_form(
-                step_id="reauth_confirm",
-                data_schema=_schema(entry.data, include_password=True),
-                errors={"base": "auth"},
-            )
-        finally:
-            await client.close()
 
-        # Update entry with the new password and reload
-        self.hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]})
-        await self.hass.config_entries.async_reload(entry.entry_id)
-        return self.async_abort(reason="reauth_successful")
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change connection settings (host/username/password/SSL)."""
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        if entry is None:
+            return self.async_abort(reason="unknown")
+
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            host = user_input[CONF_HOST]
+            username = user_input[CONF_USERNAME]
+            # Blank password means keep the current one
+            password = user_input.get(CONF_PASSWORD) or entry.data[CONF_PASSWORD]
+            verify_ssl = user_input.get(CONF_VERIFY_SSL, False)
+
+            unique_id = f"{host}_{username}"
+            if any(
+                other.unique_id == unique_id and other.entry_id != entry.entry_id
+                for other in self._async_current_entries()
+            ):
+                return self.async_abort(reason="already_configured")
+
+            error = await _async_validate_login(self.hass, host, username, password, verify_ssl)
+            if error is None:
+                self.hass.config_entries.async_update_entry(
+                    entry,
+                    data={
+                        **entry.data,
+                        CONF_HOST: host,
+                        CONF_USERNAME: username,
+                        CONF_PASSWORD: password,
+                        CONF_VERIFY_SSL: verify_ssl,
+                    },
+                    unique_id=unique_id,
+                )
+                await self.hass.config_entries.async_reload(entry.entry_id)
+                return self.async_abort(reason="reconfigure_successful")
+            errors["base"] = error
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_HOST, default=entry.data.get(CONF_HOST, "")): str,
+                vol.Required(CONF_USERNAME, default=entry.data.get(CONF_USERNAME, "")): str,
+                vol.Optional(CONF_PASSWORD): PASSWORD_SELECTOR,
+                vol.Optional(
+                    CONF_VERIFY_SSL, default=entry.data.get(CONF_VERIFY_SSL, False)
+                ): bool,
+            }
+        )
+        return self.async_show_form(step_id="reconfigure", data_schema=schema, errors=errors)
 
     @staticmethod
-    def async_get_options_flow(config_entry: config_entries.ConfigEntry):
-        # Return an instance; do NOT rely on super().__init__
-        return OptionsFlowHandler(config_entry)
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlowHandler:
+        return OptionsFlowHandler()
 
 
-class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Options flow without deprecated self.config_entry assignment and no super().__init__."""
+class OptionsFlowHandler(OptionsFlow):
+    """Options flow for tunables (scan interval)."""
 
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        # Do NOT call super().__init__(config_entry); base has no __init__
-        # Do NOT assign self.config_entry (deprecated).
-        self._entry = config_entry
-
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Edit options (host/username/password/verify_ssl/scan_interval)."""
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            return self.async_create_entry(data=user_input)
 
-        entry = self._entry
-        data = entry.data
-        opts = entry.options
-
-        defaults = {
-            CONF_HOST: opts.get(CONF_HOST, data.get(CONF_HOST, "")),
-            CONF_USERNAME: opts.get(CONF_USERNAME, data.get(CONF_USERNAME, "")),
-            CONF_PASSWORD: opts.get(CONF_PASSWORD, data.get(CONF_PASSWORD, "")),
-            CONF_VERIFY_SSL: opts.get(CONF_VERIFY_SSL, data.get(CONF_VERIFY_SSL, False)),
-            CONF_SCAN_INTERVAL: opts.get(CONF_SCAN_INTERVAL, data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)),
-        }
-        return self.async_show_form(step_id="init", data_schema=_schema(defaults, include_password=True))
+        current = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+        schema = vol.Schema(
+            {vol.Required(CONF_SCAN_INTERVAL, default=current): SCAN_INTERVAL_VALIDATOR}
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)

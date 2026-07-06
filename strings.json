@@ -15,21 +15,32 @@
       },
       "reauth_confirm": {
         "title": "Reauthenticate UniFi Drive",
-        "description": "Your session expired or credentials changed. Please enter your password again.",
+        "description": "Your session expired or credentials changed. Enter the password for {username} on {host}.",
+        "data": {
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure UniFi Drive",
+        "description": "Update the connection settings. Leave the password blank to keep the current one.",
         "data": {
           "host": "Host",
           "username": "Username",
           "password": "Password",
-          "verify_ssl": "Verify SSL certificate",
-          "scan_interval": "Scan interval (seconds)"
+          "verify_ssl": "Verify SSL certificate"
         }
       }
     },
     "error": {
-      "auth": "Login failed. Check host, credentials, SSL, or 2FA (use a local account)."
+      "auth": "Login failed. Check credentials or 2FA (use a local account).",
+      "cannot_connect": "Cannot connect to the host. Check the host, network and SSL settings.",
+      "rate_limit": "Login was rate-limited by the controller. Wait a few minutes and try again.",
+      "unknown": "Unexpected error."
     },
     "abort": {
+      "already_configured": "This host and username are already configured.",
       "reauth_successful": "Reauthentication successful.",
+      "reconfigure_successful": "Reconfiguration successful.",
       "unknown": "Unexpected error."
     }
   },
@@ -37,12 +48,8 @@
     "step": {
       "init": {
         "title": "UniFi Drive Options",
-        "description": "Update connection settings.",
+        "description": "Adjust how often UniFi Drive is polled.",
         "data": {
-          "host": "Host",
-          "username": "Username",
-          "password": "Password",
-          "verify_ssl": "Verify SSL certificate",
           "scan_interval": "Scan interval (seconds)"
         }
       }

@@ -1,140 +1,178 @@
+"""Binary sensor platform for UniFi Drive."""
 from __future__ import annotations
 
-from typing import Any, Optional
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
-    BinarySensorEntity,
     BinarySensorDeviceClass,
+    BinarySensorEntity,
+    BinarySensorEntityDescription,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
-from .coordinator import UnifiDriveCoordinator
-
-
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: UnifiDriveCoordinator = data["coordinator"]
-
-    entities: list[BinarySensorEntity] = []
-
-    entities.append(ActiveNICConnectedBinarySensor(coordinator, entry))
-
-    drives = (coordinator.data or {}).get("drives") or {}
-    drive_items = drives.get("drives") if isinstance(drives, dict) else []
-    for d in drive_items or []:
-        did = d.get("id")
-        name = d.get("name") or did or "Drive"
-        if not did:
-            continue
-        entities.append(DriveSnapshotEnabledBinary(coordinator, entry, did, name))
-
-    async_add_entities(entities)
+from .coordinator import (
+    UniFiDriveConfigEntry,
+    UniFiDriveData,
+    UnifiDriveCoordinator,
+    pick_active_nic,
+)
+from .entity import UniFiDriveEntity
 
 
-class _BaseUDBinary(CoordinatorEntity[UnifiDriveCoordinator], BinarySensorEntity):
-    _attr_has_entity_name = True
-
-    def __init__(self, coordinator: UnifiDriveCoordinator, entry: ConfigEntry, name_suffix: str, icon: Optional[str] = None) -> None:
-        super().__init__(coordinator)
-        self._entry = entry
-        self._name_suffix = name_suffix
-        self._attr_unique_id = f"{entry.entry_id}_{name_suffix}"
-        self._attr_icon = icon
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        dev = (self.coordinator.data or {}).get("device") or {}
-        model = dev.get("model") or "UNAS"
-        name = dev.get("name") or "UniFi Drive"
-        sw = dev.get("firmwareVersion") or dev.get("version")
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._entry.entry_id)},
-            manufacturer="Ubiquiti",
-            model=model,
-            name=name,
-            sw_version=sw,
-        )
+def _nic_is_on(data: UniFiDriveData) -> bool:
+    nic = pick_active_nic(data.device)
+    return bool(nic and nic.get("connected"))
 
 
-class ActiveNICConnectedBinarySensor(_BaseUDBinary):
-    _attr_name = "Active NIC Connected"
-    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
-    _attr_icon = "mdi:ethernet"
-    def __init__(self, coordinator, entry):
-        super().__init__(coordinator, entry, "nic_connected_bin", "mdi:ethernet")
-    @staticmethod
-    def _pick_nic(dev: dict) -> Optional[dict]:
-        nics = dev.get("networkInterfaces") or []
-        if not isinstance(nics, list):
-            return None
-        for n in nics:
-            try:
-                if n.get("connected"):
-                    return n
-            except Exception:
+def _nic_attributes(data: UniFiDriveData) -> dict[str, Any] | None:
+    nic = pick_active_nic(data.device)
+    if not nic:
+        return None
+    return {
+        "interface": nic.get("interface"),
+        "interface_name": nic.get("interfaceName"),
+        "address": nic.get("address"),
+        "mac": nic.get("mac"),
+        "link_speed": nic.get("linkSpeed"),
+    }
+
+
+@dataclass(frozen=True, kw_only=True)
+class UniFiDriveBinarySensorDescription(BinarySensorEntityDescription):
+    """Describes a UniFi Drive binary sensor derived from the data set."""
+
+    is_on_fn: Callable[[UniFiDriveData], bool | None]
+    attributes_fn: Callable[[UniFiDriveData], dict[str, Any] | None] | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class UniFiDriveDriveBinarySensorDescription(BinarySensorEntityDescription):
+    """Describes a binary sensor derived from a single drive dict."""
+
+    is_on_fn: Callable[[dict[str, Any]], bool | None]
+    attributes_fn: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None
+
+
+BINARY_SENSORS: tuple[UniFiDriveBinarySensorDescription, ...] = (
+    UniFiDriveBinarySensorDescription(
+        key="nic_connected_bin",
+        name="Active NIC Connected",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        icon="mdi:ethernet",
+        is_on_fn=_nic_is_on,
+        attributes_fn=_nic_attributes,
+    ),
+)
+
+DRIVE_BINARY_SENSORS: tuple[UniFiDriveDriveBinarySensorDescription, ...] = (
+    UniFiDriveDriveBinarySensorDescription(
+        key="snapshot_enabled_bin",
+        name="Snapshot Enabled",
+        icon="mdi:camera-burst",
+        is_on_fn=lambda drive: bool((drive.get("protections") or {}).get("snapshotEnabled")),
+        attributes_fn=lambda drive: {
+            "type": drive.get("type"),
+            "status": drive.get("status"),
+            "storage_pool_id": drive.get("storagePoolId"),
+        },
+    ),
+)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: UniFiDriveConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    coordinator = entry.runtime_data
+
+    async_add_entities(
+        UniFiDriveBinarySensor(coordinator, description) for description in BINARY_SENSORS
+    )
+
+    known_drives: set[str] = set()
+
+    @callback
+    def _add_drive_entities() -> None:
+        """Add entities for drives that appeared since the last update."""
+        new_entities: list[BinarySensorEntity] = []
+        for drive_id, drive in coordinator.data.drives_by_id.items():
+            if drive_id in known_drives:
                 continue
-        return nics[0] if nics else None
+            known_drives.add(drive_id)
+            drive_name = drive.get("name") or drive_id
+            new_entities.extend(
+                UniFiDriveDriveBinarySensor(coordinator, description, drive_id, drive_name)
+                for description in DRIVE_BINARY_SENSORS
+            )
+        if new_entities:
+            async_add_entities(new_entities)
+
+    _add_drive_entities()
+    entry.async_on_unload(coordinator.async_add_listener(_add_drive_entities))
+
+
+class UniFiDriveBinarySensor(UniFiDriveEntity, BinarySensorEntity):
+    """Binary sensor deriving its state from the full coordinator data set."""
+
+    entity_description: UniFiDriveBinarySensorDescription
+
+    def __init__(
+        self,
+        coordinator: UnifiDriveCoordinator,
+        description: UniFiDriveBinarySensorDescription,
+    ) -> None:
+        super().__init__(coordinator, description.key)
+        self.entity_description = description
+
     @property
     def is_on(self) -> bool | None:
-        dev = (self.coordinator.data or {}).get("device") or {}
-        nic = self._pick_nic(dev)
-        return bool(nic and nic.get("connected"))
+        return self.entity_description.is_on_fn(self.coordinator.data)
+
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        dev = (self.coordinator.data or {}).get("device") or {}
-        nic = self._pick_nic(dev)
-        if not nic:
+        if self.entity_description.attributes_fn is None:
             return None
-        return {
-            "interface": nic.get("interface"),
-            "interface_name": nic.get("interfaceName"),
-            "address": nic.get("address"),
-            "mac": nic.get("mac"),
-            "link_speed": nic.get("linkSpeed"),
-        }
+        return self.entity_description.attributes_fn(self.coordinator.data)
 
 
-def _drives_list(coordinator: UnifiDriveCoordinator) -> list[dict[str, Any]]:
-    drives = (coordinator.data or {}).get("drives") or {}
-    return drives.get("drives") if isinstance(drives, dict) else []
+class UniFiDriveDriveBinarySensor(UniFiDriveEntity, BinarySensorEntity):
+    """Binary sensor for a single UniFi Drive."""
 
+    entity_description: UniFiDriveDriveBinarySensorDescription
 
-class _BaseDriveBinary(_BaseUDBinary):
-    def __init__(self, coordinator, entry, drive_id: str, drive_name: str, suffix: str, icon: Optional[str] = None):
-        super().__init__(coordinator, entry, f"drive_{drive_id}_{suffix}", icon)
+    def __init__(
+        self,
+        coordinator: UnifiDriveCoordinator,
+        description: UniFiDriveDriveBinarySensorDescription,
+        drive_id: str,
+        drive_name: str,
+    ) -> None:
+        super().__init__(coordinator, f"drive_{drive_id}_{description.key}")
+        self.entity_description = description
         self._drive_id = drive_id
         self._drive_name = drive_name
+
     @property
-    def name(self) -> str | None:
-        return f"{self._drive_name} {self._attr_name}" if self._attr_name else self._drive_name
-    def _find_drive(self) -> dict[str, Any] | None:
-        for d in _drives_list(self.coordinator) or []:
-            if d.get("id") == self._drive_id:
-                return d
-        return None
+    def _drive(self) -> dict[str, Any] | None:
+        return self.coordinator.data.drives_by_id.get(self._drive_id)
 
+    @property
+    def name(self) -> str:
+        drive_name = (self._drive or {}).get("name") or self._drive_name
+        return f"{drive_name} {self.entity_description.name}"
 
-class DriveSnapshotEnabledBinary(_BaseDriveBinary):
-    _attr_name = "Snapshot Enabled"
-    _attr_icon = "mdi:camera-burst"
-    def __init__(self, coordinator, entry, drive_id, drive_name):
-        super().__init__(coordinator, entry, drive_id, drive_name, "snapshot_enabled_bin", "mdi:camera-burst")
     @property
     def is_on(self) -> bool | None:
-        d = self._find_drive() or {}
-        prot = d.get("protections") or {}
-        val = prot.get("snapshotEnabled")
-        return bool(val)
+        drive = self._drive
+        return self.entity_description.is_on_fn(drive) if drive else None
+
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
-        d = self._find_drive() or {}
-        return {
-            "type": d.get("type"),
-            "status": d.get("status"),
-            "storage_pool_id": d.get("storagePoolId"),
-        }
+        drive = self._drive
+        if drive is None or self.entity_description.attributes_fn is None:
+            return None
+        return self.entity_description.attributes_fn(drive)
