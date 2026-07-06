@@ -8,9 +8,16 @@ This repository contains a custom [Home Assistant](https://www.home-assistant.io
 - Data update coordinator that periodically polls the REST API.
 - Rich set of sensors covering firmware versions, CPU, memory, storage totals and per-drive metrics.
 - Binary sensors for link status and snapshot enablement.
-- Config flow with reauthentication and options flow for updating credentials and polling interval.
+- Config flow with reauthentication, a reconfigure flow for connection settings and an options flow for the polling interval.
+- Entities are added automatically when new drives or disks appear.
 
 ## Installation
+
+### HACS
+
+Add this repository to [HACS](https://hacs.xyz/) as a custom repository (type: Integration) and install "UniFi Drive". Home Assistant 2024.11 or newer is required.
+
+### Manual
 
 1. Copy the repository into your Home Assistant `custom_components` directory so it is available at `custom_components/unifi_drive`.
 2. Restart Home Assistant to load the integration.
@@ -23,13 +30,13 @@ During setup you will be prompted for:
 - **Host** – the IP or hostname of your UniFi OS console.
 - **Username / Password** – credentials for a local UniFi OS account.
 - **Verify SSL** – whether to validate the HTTPS certificate.  Disable this if you use the default self-signed certificate.
-- **Update Interval** – polling frequency in seconds (defaults to 30 seconds).
+- **Update Interval** – polling frequency in seconds (defaults to 30 seconds, minimum 10).
 
-These options can be adjusted later from the integration's options dialog.
+The polling interval can be adjusted later from the integration's options dialog. Connection settings (host, username, password, SSL verification) can be changed via the entry's **Reconfigure** action.
 
 ## Development
 
-- Install dependencies listed in `manifest.json` (notably `aiohttp`).
+- The integration only uses libraries shipped with Home Assistant core (notably `aiohttp`), so there are no extra requirements to install.
 - Use Home Assistant's development container or virtual environment for testing flows.
 - Run static type checking or linting tools as needed.  There are currently no automated tests in the repository.
 
