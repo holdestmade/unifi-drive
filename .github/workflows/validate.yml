@@ -12,7 +12,7 @@ jobs:
     name: HACS validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: HACS validation
         uses: hacs/action@main
@@ -27,7 +27,7 @@ jobs:
     name: Hassfest validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # hassfest expects the custom_components/<domain> layout, while this
       # repository keeps the integration in the root (hacs.json
