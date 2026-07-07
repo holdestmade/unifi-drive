@@ -3,6 +3,7 @@
 [![Validate](https://github.com/holdestmade/unifi-drive/actions/workflows/validate.yml/badge.svg)](https://github.com/holdestmade/unifi-drive/actions/workflows/validate.yml)
 [![GitHub release](https://img.shields.io/github/v/release/holdestmade/unifi-drive)](https://github.com/holdestmade/unifi-drive/releases)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A custom [Home Assistant](https://www.home-assistant.io/) integration for **UniFi Drive / UNAS appliances** (e.g. UNAS Pro). It polls the UniFi OS local API and exposes system status, storage metrics, drive usage and disk health as sensors — no cloud connection required.
 
@@ -132,4 +133,4 @@ All entities are attached to a single device representing the appliance.
 
 ## License
 
-This project is provided as-is without an explicit license. Please open an issue or submit a PR if you would like to contribute improvements.
+This project is licensed under the [MIT License](LICENSE). Please open an issue or submit a PR if you would like to contribute improvements.
