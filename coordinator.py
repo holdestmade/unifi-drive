@@ -170,6 +170,8 @@ class UnifiDriveCoordinator(DataUpdateCoordinator[UniFiDriveData]):
             update_interval=timedelta(seconds=scan_interval),
         )
         self.client = client
+        # Last raw endpoint payloads, kept for the diagnostics download.
+        self.last_raw: dict[str, Any] = {}
 
     async def _async_update_data(self) -> UniFiDriveData:
         try:
@@ -181,4 +183,5 @@ class UnifiDriveCoordinator(DataUpdateCoordinator[UniFiDriveData]):
             raise UpdateFailed(f"Connection error: {err}") from err
         except UniFiDriveError as err:
             raise UpdateFailed(str(err)) from err
+        self.last_raw = raw
         return _process_data(raw)

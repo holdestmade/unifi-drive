@@ -193,6 +193,36 @@ class UniFiDriveClient:
             raise last_error
         return {}
 
+    @staticmethod
+    async def _decode(resp: aiohttp.ClientResponse) -> Any:
+        """Return the JSON body when possible, otherwise the raw text."""
+        if "application/json" in resp.headers.get("Content-Type", ""):
+            with suppress(aiohttp.ClientError, ValueError, asyncio.TimeoutError):
+                return await resp.json()
+        with suppress(aiohttp.ClientError, asyncio.TimeoutError):
+            return await resp.text()
+        return None
+
+    async def request_raw(self, method: str, path: str) -> tuple[int, Any]:
+        """Perform a request and return ``(status, payload)`` without raising.
+
+        Unlike :meth:`_request_json` this never turns an HTTP status into an
+        exception, which lets tooling probe a set of endpoints and record which
+        ones a particular firmware actually exposes.
+        """
+        await self.ensure_authenticated()
+        url = f"{self.host}{path}"
+
+        async with self._session.request(method, url, headers=self._base_headers()) as resp:
+            self._update_auth_from_headers(resp)
+            if resp.status != 401:
+                return resp.status, await self._decode(resp)
+
+        await self.login()
+        async with self._session.request(method, url, headers=self._base_headers()) as resp:
+            self._update_auth_from_headers(resp)
+            return resp.status, await self._decode(resp)
+
     # --- Endpoints ---
     async def get_device_info(self) -> dict[str, Any]:
         return await self._request_drive_json("GET", "systems/device-info")

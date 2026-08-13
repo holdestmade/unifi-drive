@@ -125,6 +125,44 @@ All entities are attached to a single device representing the appliance.
       custom_components.unifi_drive: debug
   ```
 
+- **Diagnostics** — on the integration entry choose **Download diagnostics** for a
+  JSON file containing the raw response of every polled endpoint (under `raw`),
+  the normalised data the entities use (under `processed`), and the entry
+  configuration. Serials, MACs, IPs, hostnames and credentials are redacted.
+
+## Actions
+
+### `unifi_drive.dump_api`
+
+**UniFi Drive: Dump API responses** queries every known controller endpoint and
+writes one JSON file per endpoint, showing all the data the appliance exposes.
+It is the reference for adding new sensors — if a value isn't in the dump, the
+integration can't read it.
+
+```yaml
+action: unifi_drive.dump_api
+data:
+  output_dir: unifi_drive_api_samples
+```
+
+| Field | Purpose |
+| --- | --- |
+| `config_entry_id` | Which appliance to query. Only needed when more than one is configured. |
+| `output_dir` | Where to write, relative to the configuration directory. Defaults to `unifi_drive_api_samples`, created if missing. |
+| `extra_paths` | Additional absolute API paths to probe, e.g. `/api/system`. |
+
+Alongside the six polled endpoints it probes a set of speculative ones and
+records which paths a given firmware actually supports in `_index.json` — the
+404s are as informative as the hits. The same index comes back as response
+data, so **Developer tools → Actions** shows the result without opening a file.
+
+**The output is not redacted**: serials, MAC addresses, IP addresses and
+hostnames are all present. Review the files before sharing them; use
+*Download diagnostics* when you need something safe to attach to an issue.
+
+See [`api_samples/README.md`](api_samples/README.md) for the file layout and
+the full endpoint list.
+
 ## Development
 
 - The integration only uses libraries shipped with Home Assistant core (notably `aiohttp`), so there are no extra requirements to install.
