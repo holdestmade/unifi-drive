@@ -125,6 +125,29 @@ All entities are attached to a single device representing the appliance.
       custom_components.unifi_drive: debug
   ```
 
+- **Diagnostics** — on the integration entry choose **Download diagnostics** for a
+  JSON file containing the raw response of every polled endpoint (under `raw`),
+  the normalised data the entities use (under `processed`), and the entry
+  configuration. Serials, MACs, IPs, hostnames and credentials are redacted.
+
+## API samples
+
+[`api_samples/`](api_samples/) holds captured JSON responses from the
+controller — one file per endpoint, showing every field the appliance exposes.
+They are the reference for adding new sensors.
+
+Regenerate them against your own appliance with:
+
+```bash
+python tools/dump_api.py --host 192.168.1.211 --username unifi-ro
+```
+
+The script needs only `aiohttp` (no Home Assistant install), probes the six
+polled endpoints plus a set of speculative ones, and records which paths a
+given firmware actually supports in `_index.json`. Identifying values are
+redacted by default. See [`api_samples/README.md`](api_samples/README.md) for
+the file layout, the flags and the endpoint list.
+
 ## Development
 
 - The integration only uses libraries shipped with Home Assistant core (notably `aiohttp`), so there are no extra requirements to install.
