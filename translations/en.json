@@ -54,5 +54,25 @@
         }
       }
     }
+  },
+  "services": {
+    "dump_api": {
+      "name": "Dump API responses",
+      "description": "Queries every known UniFi Drive controller endpoint and writes one JSON file per endpoint, showing all the data the appliance exposes. The files are not redacted and contain serial numbers, MAC addresses and IP addresses.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Integration entry",
+          "description": "Which UniFi Drive appliance to query. Only needed when more than one is configured."
+        },
+        "output_dir": {
+          "name": "Output directory",
+          "description": "Directory to write the JSON files into, relative to the configuration directory. Created if missing."
+        },
+        "extra_paths": {
+          "name": "Extra paths",
+          "description": "Additional absolute API paths to query, for example /api/system."
+        }
+      }
+    }
   }
 }

@@ -1,9 +1,9 @@
 """Diagnostics support for UniFi Drive.
 
-Returns the raw payload of every controller call the integration makes, so the
-data available for new sensors can be inspected without running a script
-against the appliance.  Use ``tools/dump_api.py`` for a wider probe that also
-covers endpoints the integration does not poll.
+Returns the raw payload of every controller call the integration makes, with
+identifying values redacted, so a diagnostics file is safe to attach to an
+issue.  The ``unifi_drive.dump_api`` action covers more endpoints and writes
+unredacted files for local reference.
 """
 from __future__ import annotations
 

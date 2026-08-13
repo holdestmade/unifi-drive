@@ -1,0 +1,19 @@
+dump_api:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: unifi_drive
+    output_dir:
+      required: false
+      default: unifi_drive_api_samples
+      example: unifi_drive_api_samples
+      selector:
+        text:
+    extra_paths:
+      required: false
+      example: /api/system
+      selector:
+        text:
+          multiple: true

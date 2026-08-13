@@ -5,26 +5,40 @@ endpoint, showing every field the appliance exposes. They are reference
 material for adding sensors: if a value isn't in here, the integration can't
 read it.
 
-The files are generated, not hand-written. Regenerate them from a checkout
-with:
+The files are generated, not hand-written. Regenerate them from a running Home
+Assistant with the **UniFi Drive: Dump API responses** action
+(`unifi_drive.dump_api`) — in **Developer tools → Actions**, or:
 
-```bash
-python tools/dump_api.py --host 192.168.1.211 --username unifi-ro
+```yaml
+action: unifi_drive.dump_api
+data:
+  output_dir: unifi_drive_api_samples
 ```
 
-`aiohttp` is the only requirement; Home Assistant does not need to be
-installed. The password is read from `--password`, then the
-`UNIFI_DRIVE_PASSWORD` environment variable, then an interactive prompt.
-Host and username also accept `UNIFI_DRIVE_HOST` / `UNIFI_DRIVE_USERNAME`.
+The files land in that directory under your Home Assistant configuration
+directory. Copy the ones worth keeping into this folder.
 
-Useful flags:
-
-| Flag | Effect |
+| Field | Purpose |
 | --- | --- |
-| `--verify-ssl` | Validate the HTTPS certificate (off by default, matching the integration) |
-| `-o DIR` | Write somewhere other than `api_samples/` |
-| `--extra PATH` | Probe an additional absolute path, e.g. `--extra /api/system` (repeatable) |
-| `--no-redact` | Keep serials, MACs, IPs and hostnames in the output |
+| `config_entry_id` | Which appliance to query. Only needed when more than one is configured. |
+| `output_dir` | Where to write, relative to the configuration directory. Defaults to `unifi_drive_api_samples`, created if missing. Paths outside the configuration directory are rejected. |
+| `extra_paths` | Additional absolute API paths to probe, e.g. `/api/system`. |
+
+The action also returns the index as response data, so **Developer tools →
+Actions** shows the result without opening a single file.
+
+## Not redacted
+
+The output is verbatim: **serial numbers, MAC addresses, IP addresses,
+hostnames and account names are all present.** That is the point — it is a
+faithful record of what the controller returns. Review the files before
+committing them or attaching them to an issue.
+
+For something safe to share, use **Download diagnostics** on the integration
+entry instead. It carries the last polled response for each endpoint under
+`raw` and the normalised entity data under `processed`, with serials, MACs,
+IPs, hostnames and credentials replaced by `**REDACTED**`. It covers only the
+six polled endpoints — the action covers the full probe.
 
 ## File layout
 
@@ -35,25 +49,16 @@ Each file wraps the response with the path that answered it:
   "endpoint": "/proxy/drive/api/v2/storage",
   "status": 200,
   "used_by_integration": true,
-  "redacted": true,
+  "redacted": false,
   "data": { "...": "the controller response, verbatim" }
 }
 ```
 
 File names come from the logical endpoint (`drive_storage.json`), not the
 resolved path, so a firmware that answers on `v1` instead of `v2` still
-updates the same file. `_index.json` lists every endpoint that was probed,
-its status and its top-level keys — including the ones that 404, which is how
-you tell what a given firmware does *not* support.
-
-## Redaction
-
-Values of identifying keys — serials, MACs, IPs, hostnames, usernames, emails,
-tokens — are replaced with `**REDACTED**` unless `--no-redact` is passed. Keys
-and the structure around them are always preserved, so a redacted dump still
-documents every available field. **Review the output before committing it**;
-share and drive names are not redacted, and neither are unrecognised keys on
-firmware newer than this script.
+updates the same file. `_index.json` lists every endpoint that was probed, its
+status and its top-level keys — including the ones that 404, which is how you
+tell what a given firmware does *not* support.
 
 ## Endpoints
 
@@ -75,12 +80,4 @@ firmware.
 | `/api/users/self`, `/api/system` | no | UniFi OS core, outside the Drive API |
 
 Drive endpoints are requested under `/proxy/drive/api/<version>/`, trying `v2`
-then `v1`.
-
-## Live data from a running Home Assistant
-
-The same raw payloads are available without running the script: open the
-integration entry and choose **Download diagnostics**. That file contains the
-last polled response for each endpoint under `raw`, plus the normalised view
-the entities are built from under `processed`, with the same redaction applied.
-It only covers the six polled endpoints — use the script for the full probe.
+then `v1`. The catalogue lives in [`dump.py`](../dump.py).
