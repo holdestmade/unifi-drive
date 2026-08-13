@@ -29,15 +29,5 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # hassfest expects the custom_components/<domain> layout, while this
-      # repository keeps the integration in the root (hacs.json
-      # content_in_root). Rearrange the checkout to match.
-      - name: Arrange custom_components layout
-        run: |
-          mkdir -p custom_components/unifi_drive
-          find . -maxdepth 1 -mindepth 1 \
-            ! -name custom_components ! -name .git ! -name .github \
-            -exec mv {} custom_components/unifi_drive/ \;
-
       - name: Hassfest validation
         uses: home-assistant/actions/hassfest@master

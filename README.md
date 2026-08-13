@@ -41,7 +41,7 @@ Home Assistant **2024.11 or newer** is required.
 
 ### Manual
 
-1. Copy the repository content into `custom_components/unifi_drive` inside your Home Assistant configuration directory.
+1. Copy the [`custom_components/unifi_drive`](custom_components/unifi_drive) folder into the `custom_components` directory inside your Home Assistant configuration directory.
 2. Restart Home Assistant.
 
 ## Setup
@@ -165,6 +165,7 @@ the full endpoint list.
 
 ## Development
 
+- The integration lives in [`custom_components/unifi_drive`](custom_components/unifi_drive), the standard HACS layout; the folder can be symlinked straight into a development configuration directory.
 - The integration only uses libraries shipped with Home Assistant core (notably `aiohttp`), so there are no extra requirements to install.
 - Every push and pull request is checked by [HACS validation and hassfest](.github/workflows/validate.yml).
 - Use Home Assistant's development container or a virtual environment for testing flows. There are currently no automated tests in the repository.
