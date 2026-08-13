@@ -80,4 +80,5 @@ firmware.
 | `/api/users/self`, `/api/system` | no | UniFi OS core, outside the Drive API |
 
 Drive endpoints are requested under `/proxy/drive/api/<version>/`, trying `v2`
-then `v1`. The catalogue lives in [`dump.py`](../dump.py).
+then `v1`. The catalogue lives in
+[`custom_components/unifi_drive/dump.py`](../custom_components/unifi_drive/dump.py).

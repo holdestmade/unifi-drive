@@ -1,5 +1,4 @@
 {
   "name": "UniFi Drive",
-  "content_in_root": true,
   "homeassistant": "2024.11.0"
 }
